@@ -1,0 +1,61 @@
+- name: "initialise tags for {{ volume.Attachments[0].Device }}"
+  set_fact:
+    volume_tags: {}
+  
+- name: "convert tags to a dictionary for {{ volume.Attachments[0].Device }}"
+  set_fact:
+    volume_tags: "{{ volume_tags | combine({ item.Key: item.Value }) }}"
+  loop: "{{ volume.Tags }}"
+  loop_control:
+    label: "{{ item.Key }}"
+
+- name: "create mount path {{ volume.Attachments[0].Device }}"
+  file: 
+    state: "directory"
+    path: "/{{ volume_tags['Mount']| default('data') }}"
+
+- name: "create partition on {{ volume.Attachments[0].Device }}"
+  parted:
+    device: "{{ volume.Attachments[0].Device }}"
+    number: 1
+    label: "gpt"
+    part_start: "0%"
+    part_end: "100%"
+    name: "data"
+    state: "present"
+
+- name: "format partition on {{ volume.Attachments[0].Device }}"
+  filesystem:
+    dev: "{{ volume.Attachments[0].Device }}1"
+    fstype: "{{ volume_tags['Fs_type']| default('xfs') }}"
+
+- name: "rediscover facts for {{ volume.Attachments[0].Device }}"
+  setup: {}
+
+- name: "discover real device for {{ volume.Attachments[0].Device }} (nitro)"
+  stat:
+    path: "{{ volume.Attachments[0].Device }}"
+    follow: no
+  register: disk_stat
+  when: supervisor == "nitro"
+
+- name: "mount the partition for {{ volume.Attachments[0].Device }} (nitro)"
+  mount:
+    path: "/{{ volume_tags['Mount']| default('data') }}"
+    src: "UUID={{ ansible_devices[disk_stat.stat.lnk_target].partitions[disk_stat.stat.lnk_target + 'p1'].uuid }}"
+    fstype: "{{ volume_tags['Fs_type']| default('xfs') }}"
+    state: "mounted"
+  when: supervisor == "nitro"
+
+- name: "mount the partition for {{ volume.Attachments[0].Device }} (legacy)"
+  mount:
+    path: "/{{ volume_tags['Mount']| default('data') }}"
+    src: "UUID={{ ansible_devices[volume.Attachments[0].Device.split('/')[2]].partitions[volume.Attachments[0].Device.split('/')[2] + '1'].uuid }}"
+    fstype: "{{ volume_tags['Fs_type']| default('xfs') }}"
+    state: "mounted"
+  when: supervisor == "legacy"
+
+
+
+
+    

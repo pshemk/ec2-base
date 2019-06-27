@@ -1,0 +1,33 @@
+- name: include python (pip) install
+  include_tasks: "python_packages.yaml"
+
+- name: "get facts"
+  ec2_metadata_facts: {}
+
+- name: setup volumes
+  include_tasks: "volumes.yaml"
+
+- name: "get az"
+  uri:
+    url: "http://169.254.169.254/latest/meta-data/placement/availability-zone"
+    return_content: true
+  register: az_raw
+
+- name: "set region"
+  set_fact:
+    aws_region: "{{ az_raw.content[0:-1] }}"
+
+- name: get instance id
+  uri:
+    url: "http://169.254.169.254/latest/meta-data/instance-id"
+    return_content: true
+  register: inststance_id_raw
+
+- name: get ec2 instance facts
+  ec2_instance_facts:
+    region: "{{ aws_region }}"
+    instance_ids: "{{ inststance_id_raw.content }}"
+  register: ec2_facts
+
+- name: setup hostname
+  command: hostnamectl set-hostname {{ ec2_facts.instances[0].tags.Name }}.{{ ansible_domain }}

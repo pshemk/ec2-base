@@ -1,0 +1,16 @@
+- name: determine the supervisor
+  set_fact:
+    supervisor: "{{ (ansible_ec2_instance_type.startswith('t3') or ansible_ec2_instance_type.startswith('c5') or ansible_ec2_instance_type.startswith('m5') or ansible_ec2_instance_type.startswith('r5')) | ternary('nitro','legacy') }}"
+
+- name: get list of attached volumes
+  shell: INSTANCE=$(curl -q http://169.254.169.254/latest/meta-data/instance-id); REGION=$(curl -q http://169.254.169.254/latest/meta-data/placement/availability-zone); aws ec2 describe-volumes --region ${REGION%?} --filters "Name=attachment.instance-id,Values=$INSTANCE"
+  register: volumes_raw
+  changed_when: false
+
+- name: loop through the attached volumes
+  include_tasks: "volume.yaml"
+  loop: "{{ (volumes_raw.stdout | from_json).Volumes }}"
+  loop_control:
+    loop_var: "volume"
+    label: "{{ volume.Attachments[0].Device }}"
+  when: volume.Attachments[0].Device != "/dev/xvda"

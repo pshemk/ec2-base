@@ -1,0 +1,11 @@
+- name: get pip
+  command: easy_install pip
+
+- name: install python packages
+  pip:
+    state: present
+    name: "{{ item }}"
+  loop:
+    - boto
+    - boto3
+    - botocore
