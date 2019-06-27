@@ -1,0 +1,8 @@
+- name: setup ec2 instance
+  hosts: all
+  # become: true
+  # user: ec2-user
+  gather_facts: true
+  roles:
+   - ec2-base
+
