@@ -1,10 +1,8 @@
-- name: get pip
-  command: easy_install pip
-
 - name: install python packages
   pip:
     state: present
     name: "{{ item }}"
+    executable: "/usr/bin/pip3"
   loop:
     - boto
     - boto3
