@@ -1,3 +1,11 @@
+- name: install required packages
+  apt:
+    name:
+    - python3-setuptools
+    - python3-pip
+    - unzip
+    state: present
+
 - name: install python packages
   pip:
     state: present

@@ -1,16 +1,46 @@
-- name: determine the supervisor
-  set_fact:
-    supervisor: "{{ (ansible_ec2_instance_type.startswith('t3') or ansible_ec2_instance_type.startswith('c5') or ansible_ec2_instance_type.startswith('m5') or ansible_ec2_instance_type.startswith('r5')) | ternary('nitro','legacy') }}"
+- name: determine if we are on a nitro hypervisor
+  ansible.builtin.set_fact:
+    use_nitro: "{{ ansible_ec2_instance_type.startswith('t3') or ansible_ec2_instance_type.startswith('t4') or ansible_ec2_instance_type.startswith('c5') or ansible_ec2_instance_type.startswith('m5') or ansible_ec2_instance_type.startswith('r5') }}"
+    # use_nitro: true
 
-- name: get list of attached volumes
-  shell: INSTANCE=$(curl -q http://169.254.169.254/latest/meta-data/instance-id); REGION=$(curl -q http://169.254.169.254/latest/meta-data/placement/availability-zone); aws ec2 describe-volumes --region ${REGION%?} --filters "Name=attachment.instance-id,Values=$INSTANCE"
-  register: volumes_raw
-  changed_when: false
+- name: install nvme tools
+  apt:
+    name: nvme-cli
+    state: present
+  when: use_nitro
 
-- name: loop through the attached volumes
-  include_tasks: "volume.yaml"
-  loop: "{{ (volumes_raw.stdout | from_json).Volumes }}"
+- name: find nvme volumes
+  ansible.builtin.find:
+    paths: "/dev"
+    patterns: "nvme*n1"
+    file_type: "any"
+  register: nvme_devices
+  when: use_nitro
+  
+- name: determine id of volumes
+  ansible.builtin.shell: VOL=$(nvme id-ctrl {{ disk.path }} | grep sn | awk '{print $3}'); echo "${VOL/vol/vol-}"
+  args:
+    executable: "/bin/bash"
+  loop: "{{ nvme_devices.files }}"
   loop_control:
-    loop_var: "volume"
-    label: "{{ volume.Attachments[0].Device }}"
-  when: volume.Attachments[0].Device != "/dev/xvda"
+    loop_var: "disk"
+    label: "{{ disk.path }}"
+  register: nvme_sn
+  when: use_nitro
+
+- name: map id of volumes to devices
+  ansible.builtin.set_fact:
+    nvme_map: "{{ nvme_map|default({}) | combine ({item.stdout: item.disk.path}) }}"
+  loop: "{{ nvme_sn.results }}"
+  when: use_nitro
+
+- name: loop through the volumes
+  ansible.builtin.include_tasks: "volume.yaml"
+  loop: "{{ ec2_volumes | dict2items }}"
+  loop_control:
+    loop_var: volume
+    label: "{{ volume.key }}"
+  when: ec2_volumes is defined and ec2_volumes
+
+- name: enable swap
+  ansible.builtin.command: "swapon -a"
