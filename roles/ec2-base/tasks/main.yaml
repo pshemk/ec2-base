@@ -15,21 +15,28 @@
 - name: include python (pip) install
   ansible.builtin.include_tasks: "python_packages.yaml"
 
+- name: check if awscli is present
+  ansible.builtin.stat:
+    path: "/usr/local/bin/aws"
+  register: awscli
+
 - name: download awscli2
   ansible.builtin.get_url:
     dest: /tmp/awscliv2.zip
-    url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+    url: https://awscli.amazonaws.com/awscli-exe-linux-{{ ansible_architecture }}.zip
+  when: not awscli.stat.exists
 
 - name: extract awscli2
   ansible.builtin.unarchive:
     copy: false
     dest: /tmp/
     src: /tmp/awscliv2.zip
+  when: not awscli.stat.exists    
 
 - name: run awscli2 installer
   ansible.builtin.command:
     cmd: /tmp/aws/install
-  ignore_errors: true   #errors on subsequent runs
+  when: not awscli.stat.exists
 
 - name: get the list of tags
   ansible.builtin.shell: REGION=$(curl -q http://169.254.169.254/latest/meta-data/placement/availability-zone) INSTANCE=$(curl -q http://169.254.169.254/latest/meta-data/instance-id); /usr/local/bin/aws ec2 describe-tags --region ${REGION%?} --filters "Name=resource-id,Values=$INSTANCE"
